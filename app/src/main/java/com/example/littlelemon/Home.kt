@@ -5,9 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
@@ -46,9 +49,38 @@ fun Home(navController: NavHostController) {
     val database = AppDatabase.getDatabase(context)
     val menuItems by database.menuItemDao().getAllMenuItems().observeAsState(emptyList())
     
+    // Search and filter state
+    var searchPhrase by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("") }
+    
     // Debug logging
     LaunchedEffect(menuItems) {
         println("LittleLemon: Home screen observed ${menuItems.size} menu items")
+    }
+    
+    // Filter menu items based on search and category
+    val filteredMenuItems = remember(menuItems, searchPhrase, selectedCategory) {
+        var filtered = menuItems
+        
+        // Filter by search phrase
+        if (searchPhrase.isNotBlank()) {
+            filtered = filtered.filter { 
+                it.title.contains(searchPhrase, ignoreCase = true) ||
+                it.description.contains(searchPhrase, ignoreCase = true)
+            }
+        }
+        
+        // Filter by category
+        if (selectedCategory.isNotBlank()) {
+            filtered = filtered.filter { it.category.equals(selectedCategory, ignoreCase = true) }
+        }
+        
+        filtered
+    }
+    
+    // Get unique categories for filter buttons
+    val categories = remember(menuItems) {
+        menuItems.map { it.category }.distinct().sorted()
     }
 
     Column(
@@ -108,15 +140,26 @@ fun Home(navController: NavHostController) {
         }
         
         // Hero Section - Fixed at top
-        HeroSection()
+        HeroSection(
+            searchPhrase = searchPhrase,
+            onSearchPhraseChange = { searchPhrase = it }
+        )
         
         // Menu Items - Scrollable section
-        MenuItems(menuItems = menuItems)
+        MenuItems(
+            menuItems = filteredMenuItems,
+            categories = categories,
+            selectedCategory = selectedCategory,
+            onCategorySelected = { selectedCategory = it }
+        )
     }
 }
 
 @Composable
-fun HeroSection() {
+fun HeroSection(
+    searchPhrase: String,
+    onSearchPhraseChange: (String) -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -160,12 +203,40 @@ fun HeroSection() {
                     contentScale = ContentScale.Crop
                 )
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Search TextField
+            TextField(
+                value = searchPhrase,
+                onValueChange = onSearchPhraseChange,
+                placeholder = { Text("Enter search phrase") },
+                leadingIcon = { 
+                    Icon(
+                        imageVector = Icons.Default.Search, 
+                        contentDescription = "Search"
+                    ) 
+                },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
 
 @Composable
-fun MenuItems(menuItems: List<MenuItemRoom>) {
+fun MenuItems(
+    menuItems: List<MenuItemRoom>,
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -177,6 +248,33 @@ fun MenuItems(menuItems: List<MenuItemRoom>) {
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp)
         )
         
+        // Category filter buttons
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // "All" button
+            item {
+                FilterButton(
+                    text = "All",
+                    isSelected = selectedCategory.isEmpty(),
+                    onClick = { onCategorySelected("") }
+                )
+            }
+            
+            // Category buttons
+            items(categories) { category ->
+                FilterButton(
+                    text = category.replaceFirstChar { it.uppercase() },
+                    isSelected = selectedCategory.equals(category, ignoreCase = true),
+                    onClick = { onCategorySelected(category) }
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -186,6 +284,29 @@ fun MenuItems(menuItems: List<MenuItemRoom>) {
                 MenuItem(menuItem = menuItem)
             }
         }
+    }
+}
+
+@Composable
+fun FilterButton(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isSelected) Color(0xFF495E57) else Color(0xFFF4CE14),
+            contentColor = if (isSelected) Color.White else Color.Black
+        ),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.height(40.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
